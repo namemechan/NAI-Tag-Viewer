@@ -3,6 +3,7 @@ import json
 import piexif
 import piexif.helper
 
+from comfyui_parser import get_comfyui_data
 from stealth_pnginfo import read_info_from_image_stealth
 
 TARGETKEY_NAIDICT_OPTION = ("steps", "height", "width",
@@ -224,6 +225,14 @@ def get_naidict_from_file(src):
     return get_naidict_from_img(img)
 
 def get_naidict_from_img(img):
+    if img.info and 'prompt' in img.info:
+        try:
+            comfyui_data = get_comfyui_data(img.info, img.width, img.height)
+            if comfyui_data:
+                return comfyui_data, 3
+        except Exception as e:
+            print(f"Error parsing ComfyUI data: {e}")
+
     exif, pnginfo = _get_infostr_from_img(img)
     if not exif and not pnginfo:
         return None, 0
@@ -238,7 +247,7 @@ def get_naidict_from_img(img):
                 if nd:
                     return nd, 3
             except Exception as e:
-                print("Error in nai old method extraction:", e)
+                print(f"Error in nai old method extraction: {e}")
 
     # nai 이미지가 아니라면 WebUI 방식(new)으로 처리
     ed1 = _get_exifdict_from_infostr(exif)
@@ -257,6 +266,6 @@ def get_naidict_from_img(img):
         return nd2, 3
 
 if __name__ == "__main__":
-    src = "target.webp"
+    src = "others/test-image.png"
     nd = get_naidict_from_file(src)
     print(nd)

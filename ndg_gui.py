@@ -15,7 +15,7 @@ from PyQt5.QtCore import QSettings, QPoint, QSize, QCoreApplication
 import NaiDictGetter
 from prompt_converter import calculate_w_values
 
-TITLE_NAME = "NAI Image Tag Viewer(with webui)"
+TITLE_NAME = "NAI Image Tag Viewer(with local)"
 TOP_NAME = "dcp_arca"
 APP_NAME = "ndg_gui"
 
