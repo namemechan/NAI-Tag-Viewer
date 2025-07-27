@@ -67,12 +67,74 @@ def count_after(text, pos, target, stopper):
         i += 1
     return count
 
+def _replace_closing_colons(text):
+    """
+    Replaces ' ::' with the appropriate number of closing brackets based on
+    the preceding unclosed opening brackets of the same type.
+    """
+    processed_text = []
+    open_brackets_stack = [] # Stores the type of open bracket ('{' or '[')
+    i = 0
+    while i < len(text):
+        if text[i:i+3] == ' ::':
+            closing_brackets = ''
+            if open_brackets_stack:
+                last_open_type = open_brackets_stack[-1]
+                # Pop all brackets of the same type from the stack
+                while open_brackets_stack and open_brackets_stack[-1] == last_open_type:
+                    open_brackets_stack.pop()
+                    if last_open_type == '{':
+                        closing_brackets += '}'
+                    elif last_open_type == '[':
+                        closing_brackets += ']'
+            processed_text.append(closing_brackets)
+            i += 3 # Skip ' ::'
+        elif text[i] == '{':
+            open_brackets_stack.append('{')
+            processed_text.append(text[i])
+            i += 1
+        elif text[i] == '[':
+            open_brackets_stack.append('[')
+            processed_text.append(text[i])
+            i += 1
+        elif text[i] == '}': # Handle explicit closing curly brace
+            if open_brackets_stack and open_brackets_stack[-1] == '{':
+                open_brackets_stack.pop()
+            processed_text.append(text[i])
+            i += 1
+        elif text[i] == ']': # Handle explicit closing square brace
+            if open_brackets_stack and open_brackets_stack[-1] == '[':
+                open_brackets_stack.pop()
+            processed_text.append(text[i])
+            i += 1
+        else:
+            processed_text.append(text[i])
+            i += 1
+    return "".join(processed_text)
+
 def calculate_w_values(text):
     """
     Convert NAI prompt style to WebUI format with weights
     """
     # Replace underscores with spaces
     text = text.replace('_', ' ')
+
+    # Handle new NAI weight syntax: weight::prompt ::
+    # This pattern matches "NUMBER::TEXT ::"
+    # Group 1: weight (e.g., 1.5)
+    # Group 2: prompt content (e.g., apple)
+    new_syntax_pattern = re.compile(r'(\d+\.?\d*)::(.*?)\s::')
+
+    def replace_new_syntax(match):
+        weight = float(match.group(1))
+        content = match.group(2).strip()
+        return f"({content}:{weight:.2f})"
+
+    # Replace all occurrences of the new syntax first
+    text = new_syntax_pattern.sub(replace_new_syntax, text)
+
+    # Handle new NAI closing bracket syntax: ::
+    text = _replace_closing_colons(text)
     
     tokens = split_tokens(text)
     results = []
