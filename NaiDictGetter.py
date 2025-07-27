@@ -1,5 +1,7 @@
 from PIL import Image
 import json
+import piexif
+import piexif.helper
 
 from stealth_pnginfo import read_info_from_image_stealth
 
@@ -23,23 +25,43 @@ WEBUI_OPTION_MAPPING = {
 }
 
 def _get_infostr_from_img(img):
-    exif = None
-    pnginfo = None
+    exif_str = None
+    pnginfo_str = None
 
-    # exif
-    if img.info:
+    # Try to get EXIF UserComment for WebP/JPEG
+    if img.format in ["WEBP", "JPEG"]:
         try:
-            exif = json.dumps(img.info)
+            exif_bytes = img.info.get("exif")
+            if exif_bytes:
+                exif_dict = piexif.load(exif_bytes)
+                user_comment_bytes = exif_dict.get("Exif", {}).get(piexif.ExifIFD.UserComment)
+                if user_comment_bytes:
+                    exif_str = piexif.helper.UserComment.load(user_comment_bytes)
         except Exception as e:
-            print(e)
+            print(f"Error reading WebP/JPEG EXIF UserComment: {e}")
 
-    # stealth pnginfo
+    # Fallback to general img.info if no UserComment or for other formats
+    if exif_str is None and img.info:
+        try:
+            # Check if img.info itself contains a 'Comment' or 'parameters' key directly
+            # This handles cases where info is already a dict with relevant data
+            if 'Comment' in img.info and img.info['Comment'] is not None:
+                exif_str = img.info['Comment']
+            elif 'parameters' in img.info and img.info['parameters'] is not None:
+                exif_str = img.info['parameters']
+            else:
+                # If not directly a comment/parameters, try to dump the whole info dict
+                exif_str = json.dumps(img.info)
+        except Exception as e:
+            print(f"Error dumping img.info to JSON: {e}")
+
+    # stealth pnginfo (should work for RGBA WebP too)
     try:
-        pnginfo = read_info_from_image_stealth(img)
+        pnginfo_str = read_info_from_image_stealth(img)
     except Exception as e:
-        print(e)
+        print(f"Error reading stealth info: {e}")
 
-    return exif, pnginfo
+    return exif_str, pnginfo_str
 
 def is_nai_exif(info_str):
     """nai 이미지면 exif의 원본 JSON에 'Comment' 키가 존재하고 None이 아닌 경우 True를 반환"""
@@ -64,8 +86,21 @@ def _get_exifdict_from_infostr(info_str):
             return None
         else:
             return data
+    except json.JSONDecodeError:
+        # If it's not a valid JSON, it might be a raw WebUI parameter string
+        # Check if it contains common WebUI parameter indicators
+        if "Prompt:" in info_str or "Negative prompt:" in info_str or "Steps:" in info_str:
+            try:
+                return parse_webui_exif(info_str)
+            except Exception as e:
+                print(f"Error parsing raw WebUI string: {e}")
+                return None
+        else:
+            # It's neither JSON nor a recognizable WebUI raw string
+            print(f"EXIF dictionary conversion error: Not a valid JSON or WebUI string. Info: {info_str[:100]}...")
+            return None
     except Exception as e:
-        print("EXIF dictionary conversion error:", e)
+        print("EXIF dictionary conversion error (general):", e)
         return None
 
 def parse_webui_exif(parameters_str):
